@@ -28,6 +28,9 @@ Run the `coin` script from anywhere and explore from there
 
     coin listen -a BTC,ETH,XMR,ZEC collect run
 
+See the [Configuration Instructions](docs/config_instructions.md) document for help on configuring variables, including the API keys.
+
+
 ## Contribute
 
     git clone https://github.com/snth/numismatic.git

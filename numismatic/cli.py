@@ -151,10 +151,11 @@ def tabulate(data):
 
 @coin.command()
 @click.option('--exchange', '-e', default='bitfinex',
-              type=click.Choice(['bitfinex', 'luno']))
-@click.option('--assets', '-a', multiple=True, default=DEFAULT_ASSETS,
+              type=click.Choice(['bitfinex', 'luno']),
+              envvar=f'{ENVVAR_PREFIX}_EXCHANGE')
+@click.option('--assets', '-a', multiple=True, default=[],
               envvar=f'{ENVVAR_PREFIX}_ASSETS')
-@click.option('--currencies', '-c', multiple=True, default=DEFAULT_CURRENCIES,
+@click.option('--currencies', '-c', multiple=True, default=[],
               envvar=f'{ENVVAR_PREFIX}_CURRENCIES')
 @click.option('--raw-output', '-r', default=None)
 @click.option('--batch-size', '-b', default=1, type=int)
@@ -168,24 +169,50 @@ def listen(state, exchange, assets, currencies, raw_output, batch_size,
     'Listen to live events from an exchange'
     # FIXME: Use a factory function here
     from .exchanges import BitfinexExchange, LunoExchange
+
+    # Update lowercase choice to match titlecase sections in config.
+    exchange = exchange.title()
+
+    if not assets:
+        # Since assets was not set on environment variable or options,
+        # then use value in config, if it exists and is not an empty string.
+        if config.has_section(exchange):
+            config_assets = config[exchange].get('assets', '')
+            if config_assets:
+                assets = config_assets.split(',')
+            else:
+                assets = DEFAULT_ASSETS
+        else:
+            assets = DEFAULT_ASSETS
+
+    if not currencies:
+        if config.has_section(exchange):
+            config_currencies = config[exchange].get('currencies', '')
+            if config_currencies:
+                currencies = config_currencies.split(',')
+            else:
+                currencies = DEFAULT_CURRENCIES
+        else:
+            currencies = DEFAULT_CURRENCIES
+
     assets = ','.join(assets).split(',')
     currencies = ','.join(currencies).split(',')
     pairs = list(map(''.join, product(assets, currencies)))
+
     output_stream = state['output_stream']
     subscriptions = state['subscriptions']
-    if exchange=='bitfinex':
+
+    if exchange == 'Bitfinex':
         for pair in pairs:
             exchange = BitfinexExchange(output_stream=output_stream,
                                         raw_stream=raw_output,
                                         batch_size=batch_size)
             subscription = exchange.listen(pair, channel)
             subscriptions[f'{pair}-{exchange}'] = subscription
-    elif exchange=='luno':
-        if api_key_id is None:
-            api_key_id = (config['Luno'].get('api_key_id', '') if 'Luno' in
-                          config else '')
-            api_key_secret = (config['Luno'].get('api_key_secret', '') if
-                              'Luno' in config else '')
+    elif exchange == 'Luno':
+        if api_key_id is None and config.has_section('Luno'):
+            api_key_id = config['Luno'].get('api_key_id', '')
+            api_key_secret = config['Luno'].get('api_key_secret', '')
         exchange = LunoExchange(output_stream=output_stream,
                                 raw_stream=raw_output,
                                 batch_size=batch_size,
@@ -212,12 +239,12 @@ def collect(state, filter, type, output, format):
     output_stream = state['output_stream']
     if type:
         output_stream = output_stream.filter(
-            lambda ev: ev.__class__.__name__==type)
+            lambda ev: ev.__class__.__name__ == type)
     filters = filter
     for filter in filters:
         output_stream = output_stream.filter(
             lambda x: eval(filter, attr.asdict(x)))
-    if format=='json':
+    if format == 'json':
         output_stream = output_stream.map(lambda ev: ev.json())
     sink = (output_stream
             .map(lambda ev: output.write(str(ev)+'\n'))
